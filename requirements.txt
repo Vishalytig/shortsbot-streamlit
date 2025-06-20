@@ -3,3 +3,4 @@ moviepy
 faster-whisper
 yt-dlp
 openai
+moviepy
