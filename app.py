@@ -4,7 +4,7 @@ import tempfile
 import subprocess
 import ffmpeg
 from faster_whisper import WhisperModel
-import openai
+from openai import OpenAI
 import re
 
 # --- Config ---
@@ -53,13 +53,13 @@ if st.button("🎨 Generate Shorts"):
     highlights = []
     if use_gpt:
         st.info("🧠 Using GPT to analyze transcript and select highlights")
-        openai.api_key = os.getenv("OPENAI_API_KEY")
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         full_text = "\n".join([seg.text for seg in segments])
         prompt = ("You are a video editor. Identify 3–7 highlight clips (25–60s) "
                   "from this transcript that are emotional, funny, or impactful. "
                   "Give start/end in mm:ss format like '01:23 - 01:45: explanation.'\n\n"
                   f"Transcript:\n{full_text}")
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
