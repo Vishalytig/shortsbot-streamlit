@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import tempfile
 import subprocess
-from moviepy.editor import VideoFileClip
+import ffmpeg
 from faster_whisper import WhisperModel
 import openai
 import re
@@ -25,6 +25,14 @@ use_gpt = st.checkbox("🤖 Use GPT to smartly pick highlights (slower)")
 def download_youtube_video(url, output_path):
     cmd = ["yt-dlp", "-f", "best[ext=mp4]", "-o", output_path, url]
     subprocess.run(cmd, check=True)
+
+def cut_clip_ffmpeg(input_path, start, end, output_path):
+    (
+        ffmpeg
+        .input(input_path, ss=start, to=end)
+        .output(output_path, codec='libx264', acodec='aac', loglevel='error')
+        .run(overwrite_output=True)
+    )
 
 if st.button("🎨 Generate Shorts"):
     if not youtube_url:
@@ -79,16 +87,13 @@ if st.button("🎨 Generate Shorts"):
 
     st.success(f"Creating {len(highlights)} short clip(s)...")
     os.makedirs("viral_clips", exist_ok=True)
-    main_video = VideoFileClip(temp_path)
 
     for i, (start, end) in enumerate(highlights, start=1):
-        clip = main_video.subclip(start, end)
         out_path = f"viral_clips/short_{i}.mp4"
-        clip.write_videofile(out_path, codec="libx264", audio_codec="aac", verbose=False)
+        cut_clip_ffmpeg(temp_path, start, end, out_path)
         st.video(out_path)
         with open(out_path, "rb") as f:
             st.download_button(f"⬇️ Download Short {i}", f, file_name=os.path.basename(out_path))
 
-    main_video.close()
     st.balloons()
     st.success("✅ All set! Ready for Shorts, Reels, TikTok!")
