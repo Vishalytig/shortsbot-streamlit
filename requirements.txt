@@ -2,3 +2,4 @@ streamlit
 moviepy
 faster-whisper
 yt-dlp
+openai
