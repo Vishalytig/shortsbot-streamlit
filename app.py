@@ -1,8 +1,8 @@
 import streamlit as st
 import os
 import tempfile
-import subprocess
 import ffmpeg
+from yt_dlp import YoutubeDL
 from faster_whisper import WhisperModel
 from openai import OpenAI
 import re
@@ -23,16 +23,17 @@ keywords_input = st.text_input("🔑 Target keywords (optional, comma-separated)
 use_gpt = st.checkbox("🤖 Use GPT to smartly pick highlights (slower)")
 
 def download_youtube_video(url, output_path):
-    cmd = [
-        "yt-dlp",
-        "-f", "best[ext=mp4]",
-        "-o", output_path,
-        "--no-playlist",
-        "--user-agent", "Mozilla/5.0"
-    ]
+    ydl_opts = {
+        'format': 'best[ext=mp4]',
+        'outtmpl': output_path,
+        'noplaylist': True,
+        'quiet': True,
+        'user_agent': 'Mozilla/5.0'
+    }
     try:
-        subprocess.run(cmd, check=True)
-    except subprocess.CalledProcessError as e:
+        with YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+    except Exception as e:
         raise RuntimeError(f"Download failed: {e}")
 
 def cut_clip_ffmpeg(input_path, start, end, output_path):
