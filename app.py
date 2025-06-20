@@ -2,84 +2,97 @@ import streamlit as st
 import os
 import tempfile
 import subprocess
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip
 from faster_whisper import WhisperModel
-from datetime import timedelta
-import random
+from openai import OpenAI
 
 # --- CONFIG ---
-MODEL_SIZE = "tiny"  # Use "base", "small" or "medium" for better accuracy
-MIN_CLIP_LENGTH = 25  # seconds
-MAX_CLIP_LENGTH = 60  # seconds
-MAX_SEGMENTS = 7  # Max clips per video to keep things snappy
-CAPTION_FONT_SIZE = 48
+MODEL_SIZE = "tiny"
+MIN_CLIP_LENGTH = 25
+MAX_CLIP_LENGTH = 60
+MAX_SEGMENTS = 7
+BG_MUSIC = "background_music.mp3"  # Ensure this file is in the project root
 
 # --- UI ---
-st.set_page_config(page_title="🔥 Viral ShortsBot", layout="centered")
-st.title("🔥 ShortsBot: Your Viral Clip-Maker")
-st.markdown("Turn long videos into catchy 25–60 sec shorts, ready for YouTube, Reels, or TikTok.")
+st.set_page_config(page_title="🔥 ShortsBot", layout="centered")
+st.title("🔥 ShortsBot: AI-Powered Viral Clip Generator")
+st.markdown("Paste a YouTube video. I’ll find the best moments and turn them into shorts — with music and AI brains!")
 
-youtube_url = st.text_input("Paste a YouTube link")
-keywords_input = st.text_input("Enter target keywords (comma-separated)", "summary, important, amazing, key point")
+youtube_url = st.text_input("📺 Paste YouTube link")
+keywords_input = st.text_input("🔑 Target keywords (optional, comma-separated)", "summary,important,key point")
+use_gpt = st.checkbox("🤖 Use GPT to auto-pick best clips (slower, smarter)")
 
 def download_youtube_video(url, output_path):
     cmd = ["yt-dlp", "-f", "best[ext=mp4]", "-o", output_path, url]
     subprocess.run(cmd, check=True)
 
-def add_captions_to_clip(video_path, start, end, text, output_path):
-    video = VideoFileClip(video_path).subclip(start, end)
-    caption = TextClip(txt=text, fontsize=CAPTION_FONT_SIZE, color='white', bg_color='black', size=(video.w, None), method='caption')
-    caption = caption.set_duration(video.duration).set_position(('center', 'bottom'))
-    final = CompositeVideoClip([video, caption])
-    final.write_videofile(output_path, codec='libx264', audio_codec='aac', verbose=False, logger=None)
-
-def get_random_style():
-    colors = ['yellow', 'cyan', 'magenta', 'green', 'red']
-    return random.choice(colors)
-
-if st.button("🎬 Generate Viral Shorts"):
+if st.button("🎬 Generate Shorts"):
     if not youtube_url:
-        st.warning("Paste a YouTube URL first!")
+        st.warning("Paste a YouTube link!")
         st.stop()
-
-    keywords = [kw.strip().lower() for kw in keywords_input.split(",") if kw.strip()]
-    st.info("Downloading and processing video...")
-    whisper = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
 
     temp_path = os.path.join(tempfile.gettempdir(), "shortsbot_video.mp4")
     try:
         download_youtube_video(youtube_url, temp_path)
-    except Exception as e:
+    except Exception:
         st.error("Failed to download video.")
         st.stop()
 
-    st.info("Transcribing audio (this may take a few mins)...")
+    st.info("🔎 Transcribing... this may take a minute")
+    whisper = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
     segments, _ = whisper.transcribe(temp_path, beam_size=5)
 
     highlights = []
-    for seg in segments:
-        seg_text = seg.text.strip()
-        seg_duration = seg.end - seg.start
-        if any(kw in seg_text.lower() for kw in keywords) and MIN_CLIP_LENGTH <= seg_duration <= MAX_CLIP_LENGTH:
-            highlights.append((seg.start, seg.end, seg_text))
-        if len(highlights) >= MAX_SEGMENTS:
-            break
+    if use_gpt:
+        st.info("🧠 Asking GPT to find highlights...")
+        import openai
+        openai.api_key = os.getenv("OPENAI_API_KEY")
+        full_text = "\n".join([seg.text for seg in segments])
+        prompt = f"You are a smart video editor. Find 3-7 short highlights (25-60 seconds long) from this transcript that are funny, emotional, or impactful. Give exact start and end times with 1 sentence summary.\nTranscript:\n{full_text}"
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        import re
+        gpt_text = response.choices[0].message.content
+        times = re.findall(r"(\d+:\d+).*?\-.*?(\d+:\d+).*?: (.+)", gpt_text)
+        def to_sec(t): return sum(int(x) * 60**i for i, x in enumerate(reversed(t.split(":"))))
+        for start, end, desc in times:
+            s, e = to_sec(start), to_sec(end)
+            if MIN_CLIP_LENGTH <= e - s <= MAX_CLIP_LENGTH:
+                highlights.append((s, e))
+    else:
+        keywords = [kw.strip().lower() for kw in keywords_input.split(",") if kw.strip()]
+        for seg in segments:
+            dur = seg.end - seg.start
+            if any(k in seg.text.lower() for k in keywords) and MIN_CLIP_LENGTH <= dur <= MAX_CLIP_LENGTH:
+                highlights.append((seg.start, seg.end))
+            if len(highlights) >= MAX_SEGMENTS:
+                break
 
     if not highlights:
-        st.warning("No good highlights found in that video with your keywords.")
+        st.warning("No suitable clips found.")
         st.stop()
 
-    st.success(f"Creating {len(highlights)} awesome clips with captions...")
+    st.success(f"Creating {len(highlights)} clips with background music...")
     os.makedirs("viral_clips", exist_ok=True)
-    for i, (start, end, text) in enumerate(highlights):
-        output_file = f"viral_clips/clip_{i+1}.mp4"
-        try:
-            add_captions_to_clip(temp_path, start, end, text, output_file)
-            st.video(output_file)
-            with open(output_file, "rb") as f:
-                st.download_button(f"⬇️ Download Clip {i+1}", f, file_name=os.path.basename(output_file))
-        except Exception as e:
-            st.error(f"Failed to create clip {i+1}")
+    main_video = VideoFileClip(temp_path)
+    bg_music = AudioFileClip(BG_MUSIC).volumex(0.2) if os.path.exists(BG_MUSIC) else None
 
+    for i, (start, end) in enumerate(highlights):
+        clip = main_video.subclip(start, end)
+        if bg_music:
+            bg_audio = bg_music.subclip(0, clip.duration).set_duration(clip.duration)
+            final = clip.set_audio(clip.audio.volumex(0.8).fx(lambda a: a.set_duration(clip.duration)).fx(lambda a: a.set_start(0)).fx(lambda a: a.set_end(clip.duration)))
+            final = final.set_audio(bg_audio)
+        else:
+            final = clip
+        out_path = f"viral_clips/short_{i+1}.mp4"
+        final.write_videofile(out_path, codec="libx264", audio_codec="aac", verbose=False)
+        st.video(out_path)
+        with open(out_path, "rb") as f:
+            st.download_button(f"⬇️ Download Short {i+1}", f, file_name=os.path.basename(out_path))
+
+    main_video.close()
     st.balloons()
-    st.success("Done! Now upload these clips to YouTube Shorts, Insta Reels, TikTok and go viral 🔥")
+    st.success("Done! Upload these to Shorts, Reels or TikTok 🎉")
