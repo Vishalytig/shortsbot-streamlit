@@ -1,5 +1,5 @@
 streamlit
 faster-whisper
 yt-dlp
-openai
+openai>=1.0.0
 ffmpeg-python
