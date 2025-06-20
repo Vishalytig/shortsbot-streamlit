@@ -45,7 +45,3 @@ if st.button("Create Shorts"):
                 with open(outfile, "rb") as fp:
                     st.download_button(f"⬇️ Download clip_{i+1}.mp4", fp, file_name=f"clip_{i+1}.mp4")
             base.close()
-streamlit
-pytube
-moviepy
-faster-whisper
