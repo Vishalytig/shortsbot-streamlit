@@ -2,21 +2,21 @@ import streamlit as st
 import os
 import tempfile
 import subprocess
-from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip
+from moviepy.editor import VideoFileClip
 from faster_whisper import WhisperModel
-from openai import OpenAI
+import openai
+import re
 
 # --- CONFIG ---
 MODEL_SIZE = "tiny"
 MIN_CLIP_LENGTH = 25
 MAX_CLIP_LENGTH = 60
 MAX_SEGMENTS = 7
-BG_MUSIC = "background_music.mp3"  # Ensure this file is in the project root
 
 # --- UI ---
 st.set_page_config(page_title="🔥 ShortsBot", layout="centered")
 st.title("🔥 ShortsBot: AI-Powered Viral Clip Generator")
-st.markdown("Paste a YouTube video. I’ll find the best moments and turn them into shorts — with music and AI brains!")
+st.markdown("Paste a YouTube video. I’ll find the best moments and turn them into shorts!")
 
 youtube_url = st.text_input("📺 Paste YouTube link")
 keywords_input = st.text_input("🔑 Target keywords (optional, comma-separated)", "summary,important,key point")
@@ -45,7 +45,6 @@ if st.button("🎬 Generate Shorts"):
     highlights = []
     if use_gpt:
         st.info("🧠 Asking GPT to find highlights...")
-        import openai
         openai.api_key = os.getenv("OPENAI_API_KEY")
         full_text = "\n".join([seg.text for seg in segments])
         prompt = f"You are a smart video editor. Find 3-7 short highlights (25-60 seconds long) from this transcript that are funny, emotional, or impactful. Give exact start and end times with 1 sentence summary.\nTranscript:\n{full_text}"
@@ -53,7 +52,6 @@ if st.button("🎬 Generate Shorts"):
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
-        import re
         gpt_text = response.choices[0].message.content
         times = re.findall(r"(\d+:\d+).*?\-.*?(\d+:\d+).*?: (.+)", gpt_text)
         def to_sec(t): return sum(int(x) * 60**i for i, x in enumerate(reversed(t.split(":"))))
@@ -74,21 +72,14 @@ if st.button("🎬 Generate Shorts"):
         st.warning("No suitable clips found.")
         st.stop()
 
-    st.success(f"Creating {len(highlights)} clips with background music...")
+    st.success(f"Creating {len(highlights)} clips...")
     os.makedirs("viral_clips", exist_ok=True)
     main_video = VideoFileClip(temp_path)
-    bg_music = AudioFileClip(BG_MUSIC).volumex(0.2) if os.path.exists(BG_MUSIC) else None
 
     for i, (start, end) in enumerate(highlights):
         clip = main_video.subclip(start, end)
-        if bg_music:
-            bg_audio = bg_music.subclip(0, clip.duration).set_duration(clip.duration)
-            final = clip.set_audio(clip.audio.volumex(0.8).fx(lambda a: a.set_duration(clip.duration)).fx(lambda a: a.set_start(0)).fx(lambda a: a.set_end(clip.duration)))
-            final = final.set_audio(bg_audio)
-        else:
-            final = clip
         out_path = f"viral_clips/short_{i+1}.mp4"
-        final.write_videofile(out_path, codec="libx264", audio_codec="aac", verbose=False)
+        clip.write_videofile(out_path, codec="libx264", audio_codec="aac", verbose=False)
         st.video(out_path)
         with open(out_path, "rb") as f:
             st.download_button(f"⬇️ Download Short {i+1}", f, file_name=os.path.basename(out_path))
