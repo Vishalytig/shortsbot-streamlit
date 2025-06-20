@@ -23,8 +23,17 @@ keywords_input = st.text_input("🔑 Target keywords (optional, comma-separated)
 use_gpt = st.checkbox("🤖 Use GPT to smartly pick highlights (slower)")
 
 def download_youtube_video(url, output_path):
-    cmd = ["yt-dlp", "-f", "best[ext=mp4]", "-o", output_path, url]
-    subprocess.run(cmd, check=True)
+    cmd = [
+        "yt-dlp",
+        "-f", "best[ext=mp4]",
+        "-o", output_path,
+        "--no-playlist",
+        "--user-agent", "Mozilla/5.0"
+    ]
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Download failed: {e}")
 
 def cut_clip_ffmpeg(input_path, start, end, output_path):
     (
@@ -42,8 +51,8 @@ if st.button("🎨 Generate Shorts"):
     temp_path = os.path.join(tempfile.gettempdir(), "shortsbot_video.mp4")
     try:
         download_youtube_video(youtube_url, temp_path)
-    except Exception:
-        st.error("Failed to download the video (make sure it's public and allowed).")
+    except Exception as e:
+        st.error(f"Failed to download the video: {e}")
         st.stop()
 
     st.info("🔎 Transcribing audio—this may take a moment.")
