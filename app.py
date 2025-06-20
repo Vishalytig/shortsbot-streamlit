@@ -53,7 +53,7 @@ if st.button("🎨 Generate Shorts"):
     highlights = []
     if use_gpt:
         st.info("🧠 Using GPT to analyze transcript and select highlights")
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
         full_text = "\n".join([seg.text for seg in segments])
         prompt = ("You are a video editor. Identify 3–7 highlight clips (25–60s) "
                   "from this transcript that are emotional, funny, or impactful. "
