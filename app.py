@@ -18,7 +18,7 @@ st.set_page_config(page_title="🔥 ShortsBot", layout="centered")
 st.title("🔥 ShortsBot: AI-Powered Viral Clip Generator")
 st.markdown("Paste a YouTube video (public). Let me find standout 25–60 sec highlights!")
 
-youtube_url = st.text_input("📻 Paste YouTube link")
+youtube_url = st.text_input("📺 Paste YouTube link")
 keywords_input = st.text_input("🔑 Target keywords (optional, comma-separated)", "summary,important,key point")
 use_gpt = st.checkbox("🤖 Use GPT to smartly pick highlights (slower)")
 
@@ -44,7 +44,7 @@ def cut_clip_ffmpeg(input_path, start, end, output_path):
         .run(overwrite_output=True)
     )
 
-if st.button("🎨 Generate Shorts"):
+if st.button("🎬 Generate Shorts"):
     if not youtube_url:
         st.warning("Please paste a YouTube link first!")
         st.stop()
@@ -63,21 +63,26 @@ if st.button("🎨 Generate Shorts"):
     highlights = []
     if use_gpt:
         st.info("🧠 Using GPT to analyze transcript and select highlights")
-        client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+        try:
+            client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+        except KeyError:
+            st.error("🚫 OPENAI_API_KEY not found in secrets. Please set it in Streamlit Secrets.")
+            st.stop()
+
         full_text = "\n".join([seg.text for seg in segments])
-        prompt = ("You are a video editor. Identify 3–7 highlight clips (25–60s) "
-                  "from this transcript that are emotional, funny, or impactful. "
-                  "Give start/end in mm:ss format like '01:23 - 01:45: explanation.'\n\n"
-                  f"Transcript:\n{full_text}")
+        prompt = (
+            "You are a video editor. Identify 3–7 highlight clips (25–60s) "
+            "from this transcript that are emotional, funny, or impactful. "
+            "Give start/end in mm:ss format like '01:23 - 01:45: explanation.'\n\n"
+            f"Transcript:\n{full_text}"
+        )
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
         gpt_text = response.choices[0].message.content
         times = re.findall(r"(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*:?:?\s*(.+)", gpt_text)
-        def to_sec(ts):
-            mm, ss = map(int, ts.split(":"))
-            return mm * 60 + ss
+        def to_sec(ts): return sum(int(x) * 60**i for i, x in enumerate(reversed(ts.split(":"))))
         for start_ts, end_ts, _ in times:
             s, e = to_sec(start_ts), to_sec(end_ts)
             if MIN_CLIP_LENGTH <= e - s <= MAX_CLIP_LENGTH:
